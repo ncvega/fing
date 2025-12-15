@@ -1,0 +1,117 @@
+---
+ - name: BASIC CONFIG
+   hosts: SRV-Grafana
+   become: true
+   gather_facts: yes
+   tasks:
+
+    - name: Install net-tools
+      apt:
+        name: net-tools
+        state: present
+
+    - name: Install aptitude
+      apt:
+        name: aptitude
+        state: present
+
+    - name: Install fail2ban
+      apt:
+        name: fail2ban
+        state: present
+
+    - name: Iniciar el servicio de Fail2ban
+      systemd:
+        name: fail2ban
+        state: started
+
+    - name: Habilitar Fail2ban para que inicie al arrancar
+      systemd:
+        name: fail2ban
+        enabled: yes
+
+    - name: Install duf
+      apt:
+        name: duf
+        state: present
+
+    - name: QEMU
+      apt:
+        name: qemu-guest-agent
+        state: present
+
+    - name: UFW
+      apt:
+        name: ufw
+        state: present
+
+    - name: HTOP
+      apt:
+        name: htop
+        state: present
+
+    - name: Crear el usuario ansible
+      user:
+        name: ansible
+        comment: "Usuario para Ansible"
+        shell: /bin/bash
+        create_home: yes
+
+    - name: Permitir al usuario ansible usar sudo sin contraseña
+      copy:
+        dest: /etc/sudoers.d/ansible
+        content: "ansible ALL=(ALL) NOPASSWD:ALL"
+        mode: '0440'
+
+    - name: Crear directorio .ssh para el usuario ansible
+      file:
+        path: /home/ansible/.ssh
+        state: directory
+        owner: ansible
+        group: ansible
+        mode: '0700'
+
+    - name: Copiar la clave pública SSH al usuario ansible
+      copy:
+        src: ansible.key
+        dest: /home/ansible/.ssh/authorized_keys
+        owner: ansible
+        group: ansible
+        mode: '0600'
+
+    - name: Permitir tráfico en el puerto 9022 desde NOC
+      ufw:
+        rule: allow
+        proto: tcp
+        from_ip: '10.200.0.22'
+        to_ip: "{{ ansible_default_ipv4.address }}"
+        to_port: '9022'
+
+    - name: Permitir tráfico en el puerto 9022 desde Bastion
+      ufw:
+        rule: allow
+        proto: tcp
+        from_ip: '10.200.100.2'
+        to_ip: "{{ ansible_default_ipv4.address }}"
+        to_port: '9022'
+
+    - name: Habilitar UFW
+      ufw:
+        state: enabled
+
+    - name: Configurar SSH para hardening
+      blockinfile:
+        path: /etc/ssh/sshd_config
+        block: |
+          ListenAddress {{ ansible_default_ipv4.address }}
+          PermitRootLogin no
+          PasswordAuthentication no
+          MaxAuthTries 3
+          MaxSessions 3
+          AddressFamily inet
+          LoginGraceTime 0
+
+    - name: Reiniciar el servicio SSH para aplicar los cambios
+      systemd:
+        name: ssh
+        state: restarted
